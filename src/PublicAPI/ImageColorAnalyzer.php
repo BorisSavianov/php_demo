@@ -54,7 +54,7 @@ final class ImageColorAnalyzer
     {
         return (string) json_encode(
             $this->analyze($source, $options),
-            JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT,
+            JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_PRESERVE_ZERO_FRACTION,
         );
     }
 

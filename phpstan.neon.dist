@@ -4,15 +4,3 @@ parameters:
         - src
         - tests
     treatPhpDocTypesAsCertain: false
-    ignoreErrors:
-        # The ColorClusterer scaffold (OWNER: Developer C) injects collaborators that
-        # its pending cluster()/select() implementations will read; until that work
-        # lands the readonly properties look write-only to PHPStan. Scoped to these
-        # two stub files by exact property name so genuine dead properties elsewhere
-        # are still reported. Remove these once ColorClusterer is implemented.
-        -
-            message: '#^Property ImageColorAnalyzer\\ColorClusterer\\KMeansClusterer::\$(converter|histogram|kSelector) is never read, only written\.$#'
-            path: src/ColorClusterer/KMeansClusterer.php
-        -
-            message: '#^Property ImageColorAnalyzer\\ColorClusterer\\KSelector::\$converter is never read, only written\.$#'
-            path: src/ColorClusterer/KSelector.php
