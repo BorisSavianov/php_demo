@@ -1,0 +1,27 @@
+# Replace @dev-a / @dev-b / @dev-c with real GitHub usernames.
+#
+# Frozen platform surface + foundation — Developer A.
+# Any change under /src/Contracts requires all three reviewers (see CONTRIBUTING).
+/src/Contracts/                      @dev-a
+/src/Options/                        @dev-a
+/src/Exception/                      @dev-a
+/src/ImageLoader/                    @dev-a
+/src/Color/                          @dev-a
+/tests/Support/                      @dev-a
+/.github/                            @dev-a
+/composer.json                       @dev-a
+
+# White background cropping — Developer B (reviewed by A and C).
+/src/WhiteBackgroundCropper/         @dev-b @dev-a @dev-c
+/tests/Unit/WhiteBackgroundCropper/  @dev-b
+
+# Clustering, coverage, docs & examples — Developer C (reviewed by A and B).
+/src/ColorClusterer/                 @dev-c @dev-a @dev-b
+/src/CoverageCalculator/             @dev-c @dev-a @dev-b
+/tests/Unit/ColorClusterer/          @dev-c
+/tests/Unit/CoverageCalculator/      @dev-c
+/examples/                           @dev-c
+/README.md                           @dev-c
+
+# Facade — jointly owned.
+/src/PublicAPI/                      @dev-a @dev-b @dev-c
