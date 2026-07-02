@@ -11,4 +11,4 @@ $path = $argv[1] ?? __DIR__ . '/../tests/Fixtures/real/sample.png';
 
 $analyzer = AnalyzerFactory::createDefault();
 
-echo $analyzer->analyzeAsJson($path) . PHP_EOL;
+echo $analyzer->analyzePathAsJson($path) . PHP_EOL;

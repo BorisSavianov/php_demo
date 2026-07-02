@@ -1,6 +1,7 @@
 /vendor/
-composer.lock
-.phpunit.cache/
-.php-cs-fixer.cache
-.phpstan.cache
+/composer.lock
+/.phpunit.cache/
+/.php-cs-fixer.cache
+/.phpstan.cache
+/coverage/
 *.log

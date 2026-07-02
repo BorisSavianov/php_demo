@@ -10,7 +10,8 @@ return (new PhpCsFixer\Config())
     ->setRules([
         '@PSR12' => true,
         'declare_strict_types' => true,
-        'ordered_imports' => ['sort_algorithm' => 'alpha'],
         'no_unused_imports' => true,
+        'ordered_imports' => ['sort_algorithm' => 'alpha'],
+        'single_quote' => true,
     ])
     ->setFinder($finder);

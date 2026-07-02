@@ -31,7 +31,7 @@ use ImageColorAnalyzer\PublicAPI\AnalyzerFactory;
 $analyzer = AnalyzerFactory::createDefault();
 
 // From a path:
-$colors = $analyzer->analyze('/path/to/image.png');
+$colors = $analyzer->analyzePath('/path/to/image.png');
 
 // From a file handle (as the assignment requires):
 $handle = fopen('/path/to/image.jpg', 'rb');
@@ -39,9 +39,12 @@ echo $analyzer->analyzeAsJson($handle);
 fclose($handle);
 ```
 
-`analyze()` returns a `list<array{color: string, coverage_percent: float}>`
-sorted by coverage descending; `analyzeAsJson()` returns the same as pretty JSON.
-Runnable scripts are in [`examples/`](examples).
+`analyze()` accepts an `ImageSource`, a stream resource, a GD image, or **raw
+image bytes** (a plain string is treated as bytes, never as a path); use
+`analyzePath()` / `analyzePathAsJson()` for filesystem paths. Both return a
+`list<array{color: string, coverage_percent: float}>` sorted by coverage
+descending; the `*AsJson` variants return the same as pretty JSON. Runnable
+scripts are in [`examples/`](examples).
 
 ## How it works
 The library is a one-directional pipeline of small components behind stable
@@ -166,7 +169,7 @@ use ImageColorAnalyzer\Options\AnalyzerOptions;
 use ImageColorAnalyzer\Options\CropOptions;
 
 $opts = new AnalyzerOptions(crop: new CropOptions(lightnessMin: 90.0, chromaMax: 9.0));
-$colors = $analyzer->analyze('/path/to/scan.jpg', $opts);
+$colors = $analyzer->analyzePath('/path/to/scan.jpg', $opts);
 ```
 
 ## Project layout

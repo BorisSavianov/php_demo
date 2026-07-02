@@ -25,125 +25,165 @@ final class GdImageLoaderTest extends TestCase
         self::assertTrue($loader->supports(FileImageSource::fromStream($stream)));
     }
 
-    public function testLoadsTruecolorPngPixels(): void
+    public function testLoadDecodesPixels(): void
     {
-        $image = imagecreatetruecolor(2, 2);
-        imagefilledrectangle($image, 0, 0, 0, 0, self::rgb($image, 255, 0, 0));
-        imagefilledrectangle($image, 1, 0, 1, 0, self::rgb($image, 0, 255, 0));
-        imagefilledrectangle($image, 0, 1, 1, 1, self::rgb($image, 0, 0, 255));
+        $source = FileImageSource::fromBytes($this->pngBytes(static function (\GdImage $image): void {
+            imagealphablending($image, false);
+            imagesavealpha($image, true);
+            $red = imagecolorallocatealpha($image, 255, 0, 0, 0);
+            $transparent = imagecolorallocatealpha($image, 10, 20, 30, 127);
+            if ($red === false || $transparent === false) {
+                TestCase::fail('Unable to allocate PNG test colors.');
+            }
+            imagesetpixel($image, 0, 0, $red);
+            imagesetpixel($image, 1, 0, $transparent);
+        }, 2, 1));
 
-        $raster = (new GdImageLoader())->load($this->pngSource($image));
+        $raster = (new GdImageLoader())->load($source);
 
         self::assertSame(2, $raster->width());
-        self::assertSame(2, $raster->height());
+        self::assertSame(1, $raster->height());
+        self::assertTrue($raster->hasAlpha());
         self::assertSame('#FF0000', $raster->pixelAt(0, 0)->toHex());
-        self::assertSame('#00FF00', $raster->pixelAt(1, 0)->toHex());
-        self::assertSame('#0000FF', $raster->pixelAt(0, 1)->toHex());
+        self::assertSame(255, $raster->pixelAt(0, 0)->a);
+        self::assertSame('#0A141E', $raster->pixelAt(1, 0)->toHex());
+        self::assertSame(0, $raster->pixelAt(1, 0)->a);
     }
 
-    public function testPreservesAlphaChannel(): void
+    public function testLoadDecodesJpegPixels(): void
     {
-        $image = imagecreatetruecolor(2, 1);
-        imagesavealpha($image, true);
-        imagealphablending($image, false);
-        imagefilledrectangle($image, 0, 0, 0, 0, self::rgb($image, 255, 0, 0));
-        imagefilledrectangle($image, 1, 0, 1, 0, self::rgba($image, 0, 0, 0, 127));
+        $source = FileImageSource::fromBytes($this->jpegBytes(static function (\GdImage $image): void {
+            $brown = imagecolorallocate($image, 120, 60, 30);
+            if ($brown === false) {
+                TestCase::fail('Unable to allocate JPEG test color.');
+            }
+            imagefilledrectangle($image, 0, 0, 0, 0, $brown);
+        }));
 
-        $raster = (new GdImageLoader())->load($this->pngSource($image));
+        $pixel = (new GdImageLoader())->load($source)->pixelAt(0, 0);
+
+        self::assertEqualsWithDelta(120, $pixel->r, 3);
+        self::assertEqualsWithDelta(60, $pixel->g, 3);
+        self::assertEqualsWithDelta(30, $pixel->b, 3);
+        self::assertSame(255, $pixel->a);
+    }
+
+    public function testLoadNormalizesPalettePng(): void
+    {
+        $image = imagecreate(2, 1);
+        if (!$image instanceof \GdImage) {
+            self::fail('Unable to create palette image.');
+        }
+
+        imagealphablending($image, false);
+        imagesavealpha($image, true);
+
+        $red = imagecolorallocatealpha($image, 255, 0, 0, 0);
+        $partialAlpha = imagecolorallocatealpha($image, 10, 20, 30, 63);
+        if ($red === false || $partialAlpha === false) {
+            self::fail('Unable to allocate palette colors.');
+        }
+        imagesetpixel($image, 0, 0, $red);
+        imagesetpixel($image, 1, 0, $partialAlpha);
+
+        $source = FileImageSource::fromBytes($this->encodePng($image));
+        $raster = (new GdImageLoader())->load($source);
 
         self::assertTrue($raster->hasAlpha());
+        self::assertSame('#FF0000', $raster->pixelAt(0, 0)->toHex());
         self::assertSame(255, $raster->pixelAt(0, 0)->a);
-        self::assertTrue($raster->pixelAt(1, 0)->isTransparent());
+        self::assertSame('#0A141E', $raster->pixelAt(1, 0)->toHex());
+        self::assertEqualsWithDelta(129, $raster->pixelAt(1, 0)->a, 1);
     }
 
-    public function testNormalizesPaletteImageToTruecolor(): void
+    public function testRejectsOversizedDecodedImageBeforeRasterizing(): void
     {
-        $image = imagecreate(1, 1); // palette-based
-        self::rgb($image, 10, 20, 30); // background (index 0)
-
-        $raster = (new GdImageLoader())->load($this->pngSource($image));
-
-        self::assertSame('#0A141E', $raster->pixelAt(0, 0)->toHex());
-        self::assertFalse($raster->hasAlpha());
-    }
-
-    public function testLoadsJpegAsApproximateColor(): void
-    {
-        $image = imagecreatetruecolor(8, 8);
-        imagefilledrectangle($image, 0, 0, 7, 7, self::rgb($image, 10, 120, 200));
-
-        $stream = fopen('php://temp', 'r+b');
-        self::assertIsResource($stream);
-        imagejpeg($image, $stream, 100);
-        imagedestroy($image);
-        rewind($stream);
-
-        $raster = (new GdImageLoader())->load(FileImageSource::fromStream($stream));
-
-        self::assertSame(8, $raster->width());
-        $center = $raster->pixelAt(4, 4);
-        self::assertEqualsWithDelta(10, $center->r, 12);
-        self::assertEqualsWithDelta(120, $center->g, 12);
-        self::assertEqualsWithDelta(200, $center->b, 12);
-    }
-
-    public function testRejectsCorruptImageData(): void
-    {
-        $stream = fopen('php://temp', 'r+b');
-        self::assertIsResource($stream);
-        // Valid PNG magic so the source sniffs as PNG, but the body is garbage.
-        fwrite($stream, "\x89PNG\x0d\x0a\x1a\x0a" . str_repeat("\xFF", 32));
-        rewind($stream);
-
-        $this->expectException(InvalidImageException::class);
-        (new GdImageLoader())->load(FileImageSource::fromStream($stream));
-    }
-
-    public function testRejectsCmykJpeg(): void
-    {
-        // Minimal JPEG header whose SOF0 marker declares 4 components (CMYK).
-        $bytes = "\xFF\xD8\xFF\xC0\x00\x11\x08\x00\x02\x00\x02\x04" . str_repeat("\x00", 12);
-        $stream = fopen('php://temp', 'r+b');
-        self::assertIsResource($stream);
-        fwrite($stream, $bytes);
-        rewind($stream);
+        $source = FileImageSource::fromBytes($this->pngBytes(static function (\GdImage $image): void {
+            $red = imagecolorallocate($image, 255, 0, 0);
+            if ($red === false) {
+                TestCase::fail('Unable to allocate test color.');
+            }
+            imagefilledrectangle($image, 0, 0, 1, 0, $red);
+        }, 2, 1));
 
         $this->expectException(UnsupportedImageException::class);
-        (new GdImageLoader())->load(FileImageSource::fromStream($stream));
+
+        (new GdImageLoader(maxPixels: 1))->load($source);
+    }
+
+    public function testCorruptImageThrowsClearException(): void
+    {
+        $this->expectException(InvalidImageException::class);
+
+        (new GdImageLoader())->load(FileImageSource::fromBytes("\x89PNG\x0d\x0a\x1a\x0a" . 'not really png'));
+    }
+
+    public function testRejectsCmykJpegBeforeGdDecode(): void
+    {
+        $this->expectException(UnsupportedImageException::class);
+
+        (new GdImageLoader())->load(FileImageSource::fromBytes($this->cmykJpegHeaderBytes()));
     }
 
     /**
-     * Encodes $image as PNG into a temp stream and wraps it as a source.
-     *
-     * @param \GdImage $image consumed (destroyed) by this helper
+     * @param callable(\GdImage): void $draw
      */
-    private function pngSource(\GdImage $image): FileImageSource
+    private function pngBytes(callable $draw, int $width = 1, int $height = 1): string
     {
-        $stream = fopen('php://temp', 'r+b');
-        if (!is_resource($stream)) {
-            self::fail('Unable to open a temporary stream.');
+        $image = imagecreatetruecolor($width, $height);
+        if (!$image instanceof \GdImage) {
+            self::fail('Unable to create truecolor image.');
         }
-        imagesavealpha($image, true);
-        imagepng($image, $stream);
+
+        $draw($image);
+
+        return $this->encodePng($image);
+    }
+
+    /**
+     * @param callable(\GdImage): void $draw
+     */
+    private function jpegBytes(callable $draw): string
+    {
+        $image = imagecreatetruecolor(1, 1);
+        if (!$image instanceof \GdImage) {
+            self::fail('Unable to create truecolor image.');
+        }
+
+        $draw($image);
+
+        ob_start();
+        $encoded = imagejpeg($image, null, 100);
+        $bytes = ob_get_clean();
         imagedestroy($image);
-        rewind($stream);
 
-        return FileImageSource::fromStream($stream);
+        if ($encoded === false || !is_string($bytes)) {
+            self::fail('Unable to encode JPEG test fixture.');
+        }
+
+        return $bytes;
     }
 
-    private static function rgb(\GdImage $image, int $r, int $g, int $b): int
+    private function encodePng(\GdImage $image): string
     {
-        $color = imagecolorallocate($image, $r, $g, $b);
-        self::assertNotFalse($color);
+        ob_start();
+        $encoded = imagepng($image);
+        $bytes = ob_get_clean();
+        imagedestroy($image);
 
-        return $color;
+        if ($encoded === false || !is_string($bytes)) {
+            self::fail('Unable to encode PNG test fixture.');
+        }
+
+        return $bytes;
     }
 
-    private static function rgba(\GdImage $image, int $r, int $g, int $b, int $a): int
+    private function cmykJpegHeaderBytes(): string
     {
-        $color = imagecolorallocatealpha($image, $r, $g, $b, $a);
-        self::assertNotFalse($color);
-
-        return $color;
+        return "\xFF\xD8"
+            . "\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+            . "\xFF\xC0\x00\x14\x08\x00\x01\x00\x01\x04"
+            . "\x01\x11\x00\x02\x11\x00\x03\x11\x00\x04\x11\x00"
+            . "\xFF\xD9";
     }
 }

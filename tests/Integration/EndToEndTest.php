@@ -75,7 +75,7 @@ final class EndToEndTest extends TestCase
         imagedestroy($image);
 
         try {
-            $colors = AnalyzerFactory::createDefault()->analyze($path);
+            $colors = AnalyzerFactory::createDefault()->analyzePath($path);
         } finally {
             unlink($path);
         }

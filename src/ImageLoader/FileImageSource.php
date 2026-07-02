@@ -28,7 +28,11 @@ final class FileImageSource implements ImageSource
 
     public static function fromPath(string $path): self
     {
-        $handle = @fopen($path, 'rb');
+        if (!is_file($path) || !is_readable($path)) {
+            throw new InvalidImageException("Cannot open image file: {$path}");
+        }
+
+        $handle = fopen($path, 'rb');
         if ($handle === false) {
             throw new InvalidImageException("Cannot open image file: {$path}");
         }
@@ -36,13 +40,34 @@ final class FileImageSource implements ImageSource
         return self::fromStream($handle);
     }
 
+    public static function fromBytes(string $bytes): self
+    {
+        $stream = self::openTemporaryStream();
+        $written = fwrite($stream, $bytes);
+        if ($written === false || $written !== strlen($bytes)) {
+            throw new InvalidImageException('Unable to write image bytes to an in-memory stream.');
+        }
+        rewind($stream);
+
+        return new self($stream, self::sniff($stream));
+    }
+
     /**
      * @param resource $handle
      */
     public static function fromStream($handle): self
     {
-        if (!is_resource($handle)) {
+        if (!is_resource($handle) || get_resource_type($handle) !== 'stream') {
             throw new InvalidImageException('Expected a valid, readable stream resource.');
+        }
+
+        if (!self::isSeekable($handle)) {
+            $bytes = stream_get_contents($handle);
+            if ($bytes === false) {
+                throw new InvalidImageException('Unable to read image bytes from stream.');
+            }
+
+            return self::fromBytes($bytes);
         }
 
         return new self($handle, self::sniff($handle));
@@ -80,5 +105,36 @@ final class FileImageSource implements ImageSource
         }
 
         throw new UnsupportedImageException('Only PNG and JPEG sources are supported.');
+    }
+
+    /**
+     * @param resource $handle
+     */
+    private static function isSeekable($handle): bool
+    {
+        $metadata = stream_get_meta_data($handle);
+        if ($metadata['seekable'] !== true) {
+            return false;
+        }
+
+        set_error_handler(static fn (): bool => true);
+        try {
+            return fseek($handle, 0, SEEK_CUR) === 0;
+        } finally {
+            restore_error_handler();
+        }
+    }
+
+    /**
+     * @return resource
+     */
+    private static function openTemporaryStream()
+    {
+        $stream = fopen('php://temp', 'r+b');
+        if (!is_resource($stream)) {
+            throw new InvalidImageException('Unable to open an in-memory stream.');
+        }
+
+        return $stream;
     }
 }
