@@ -65,6 +65,29 @@ final class EndToEndTest extends TestCase
         self::assertStringContainsString('coverage_percent', $json);
     }
 
+    public function testAnalyzePathAsJsonPreservesFloatFraction(): void
+    {
+        // A clean mono-color-on-white image yields a single 100.0% color. Without
+        // JSON_PRESERVE_ZERO_FRACTION that renders as "100", diverging from the
+        // documented float shape and from analyzeAsJson.
+        $path = tempnam(sys_get_temp_dir(), 'ica') . '.png';
+        $image = imagecreatetruecolor(40, 40);
+        imagefilledrectangle($image, 0, 0, 39, 39, self::rgb($image, 255, 255, 255));
+        imagefilledrectangle($image, 10, 10, 29, 29, self::rgb($image, 0, 0, 0));
+        imagepng($image, $path);
+
+        try {
+            $json = AnalyzerFactory::createDefault()->analyzePathAsJson($path);
+        } finally {
+            unlink($path);
+        }
+
+        self::assertStringContainsString('100.0', $json);
+        /** @var list<array{color:string,coverage_percent:float}> $decoded */
+        $decoded = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsFloat($decoded[0]['coverage_percent']);
+    }
+
     public function testAnalyzeFromPath(): void
     {
         $path = tempnam(sys_get_temp_dir(), 'ica') . '.png';
@@ -72,7 +95,6 @@ final class EndToEndTest extends TestCase
         imagefilledrectangle($image, 0, 0, 39, 39, self::rgb($image, 255, 255, 255));
         imagefilledrectangle($image, 10, 10, 29, 29, self::rgb($image, 0, 0, 0));
         imagepng($image, $path);
-        imagedestroy($image);
 
         try {
             $colors = AnalyzerFactory::createDefault()->analyzePath($path);
@@ -131,7 +153,6 @@ final class EndToEndTest extends TestCase
         $handle = fopen('php://temp', 'r+b');
         self::assertIsResource($handle);
         imagepng($image, $handle);
-        imagedestroy($image);
         rewind($handle);
 
         return $handle;

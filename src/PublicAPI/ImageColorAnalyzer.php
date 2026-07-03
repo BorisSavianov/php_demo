@@ -62,17 +62,26 @@ final class ImageColorAnalyzer
      */
     public function analyzeAsJson(mixed $source, ?AnalyzerOptions $options = null): string
     {
-        return (string) json_encode(
-            $this->analyze($source, $options),
-            JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_PRESERVE_ZERO_FRACTION,
-        );
+        return $this->toJson($this->analyze($source, $options));
     }
 
     public function analyzePathAsJson(string $path, ?AnalyzerOptions $options = null): string
     {
+        return $this->toJson($this->analyzePath($path, $options));
+    }
+
+    /**
+     * Encodes a coverage list as pretty JSON. `JSON_PRESERVE_ZERO_FRACTION`
+     * keeps whole-number percentages as floats ("100.0", not "100") so every
+     * `coverage_percent` renders with the documented one-decimal shape.
+     *
+     * @param list<array{color:string,coverage_percent:float}> $colors
+     */
+    private function toJson(array $colors): string
+    {
         return (string) json_encode(
-            $this->analyzePath($path, $options),
-            JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT,
+            $colors,
+            JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_PRESERVE_ZERO_FRACTION,
         );
     }
 }
