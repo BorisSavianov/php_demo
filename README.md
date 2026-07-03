@@ -17,7 +17,7 @@ example, a print/pre-press pipeline).
 ## Requirements
 
 - **PHP ≥ 8.2** with **`ext-gd`** (developed against 8.4; CI on 8.2 / 8.3 / 8.4 / 8.5).
-- Optional **`ext-imagick`** — reserved for a CMYK/large-image adapter behind the same
+- Optional **`ext-imagick`** — reserved for CMYK/ICC-aware normalization behind the same
   loader interface.
 
 ## Install
@@ -129,8 +129,9 @@ numerator and the denominator, so a fully transparent image yields `[]`.
 - **Lossy input:** JPEG compression can introduce faint edge colors; binning and the
   merge/low-coverage passes fold most of them away, but a large, sharp color boundary may
   leave a small (~1%) artifact color.
-- **Memory:** the default `InMemoryRaster` holds decoded pixels in PHP memory; extremely
-  large images should be downscaled before analysis.
+- **Memory:** the default `GdRaster` reads pixels lazily from GD's native bitmap and represents
+  crops as lightweight views, avoiding per-pixel PHP object arrays and crop duplication. The
+  bitmap still scales with image dimensions, and the `maxPixels` guard remains the hard limit.
 
 ## Documentation
 
@@ -165,7 +166,7 @@ src/
   Contracts/              # frozen interfaces + DTOs
   Options/                # CropOptions, ClusterOptions, AnalyzerOptions
   Exception/              # typed exception hierarchy
-  ImageLoader/            # GD loader, source handling, InMemoryRaster
+  ImageLoader/            # GD loader, lazy GdRaster, source handling, InMemoryRaster
   Color/                  # sRGB <-> Lab <-> HSV conversions, ΔE
   WhiteBackgroundCropper/ # near-white border-inward crop
   ColorClusterer/         # histogram + k-means++ + k selection

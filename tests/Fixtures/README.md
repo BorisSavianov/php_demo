@@ -31,6 +31,10 @@ through both path and file-handle APIs. The bordered fixtures used specifically 
 cropper's real-image integration test (`logo_white_border.png`, `transparent_border.png`,
 `scan_offwhite_border.jpg`) are documented separately in [`real/README.md`](real/README.md).
 
+The seven images under [`real/retail/`](real/retail) reproduce the production-size QA set that
+previously exhausted a `128M` PHP process. `RetailImageSetMemoryTest` analyzes every fixture in
+an isolated `128M` subprocess through both public APIs and locks the exact color output.
+
 ## `generated/`
 
 Reserved for fixtures materialized on the fly by `tests/Support/SyntheticImageFactory`. Unit

@@ -22,7 +22,7 @@ The layer covers five concerns:
 - **Exceptions** (`src/Exception`) — a typed hierarchy under the `ImageAnalyzerException`
   marker interface.
 - **Source resolution & loading** (`src/ImageLoader`) — `SourceResolver`, `FileImageSource`,
-  `GdImageLoader`, the optional `ImagickImageLoader`, and `InMemoryRaster`.
+  `GdImageLoader`, the optional `ImagickImageLoader`, `GdRaster`, and `InMemoryRaster`.
 - **Color conversion** (`src/Color/ColorConverter.php`) — sRGB ↔ XYZ ↔ CIELAB ↔ HSV and ΔE.
 - **Facade & factory** (`src/PublicAPI`) — `ImageColorAnalyzer` and `AnalyzerFactory`.
 
@@ -52,7 +52,7 @@ mislabeled `.png` that is really a JPEG still loads correctly.
 
 ### Loading and normalization (`GdImageLoader`)
 
-`GdImageLoader::load()` decodes the bytes and hands back an `InMemoryRaster`. Key behaviors
+`GdImageLoader::load()` decodes the bytes and hands back a lazy `GdRaster`. Key behaviors
 to keep accurate when modifying it:
 
 - **GD is the required default decoder** (`ext-gd`); Imagick is an optional adapter behind
@@ -65,20 +65,19 @@ to keep accurate when modifying it:
 - **CMYK JPEGs are rejected** with `UnsupportedImageException`: GD cannot decode them
   reliably, so the loader detects the 4-channel case (via `getimagesizefromstring`) and
   refuses rather than returning wrong colors.
-- **Oversized images are rejected before rasterization** by the `maxPixels` guard (default
-  `64_000_000`), which raises `UnsupportedImageException` *before* any per-pixel array is
-  allocated — the memory-safety backstop.
+- **Oversized images are rejected before normalization and analysis** by the `maxPixels` guard
+  (default `64_000_000`), which raises `UnsupportedImageException` before downstream work.
 - **No explicit `imagedestroy()` is needed.** Since PHP 8.0, GD images are freed by the
   garbage collector; `imagedestroy()` is a deprecated no-op in 8.5. Do not reintroduce it.
 
 ### The `Raster` and its storage
 
 `Raster` is an **interface** (`width()`, `height()`, `hasAlpha()`, `pixelAt()`, `pixels()`,
-`crop()`); storage is an implementation detail. The default `InMemoryRaster` stores one
-`ColorRGBA` per pixel in a row-major list — simple, immutable, and ideal for tests and
-typical images, but **memory-heavy for very large photos**. If a future use case needs to
-process huge images without downscaling, a leaner `Raster` (for example, a packed-integer
-buffer) can be introduced behind the same interface without touching any other module.
+`crop()`); storage is an implementation detail. The default `GdRaster` keeps the normalized GD
+bitmap behind a private handle, creates `ColorRGBA` values only while consumers read them, and
+implements a crop as an offset-and-dimensions view over the same bitmap. No GD object is exposed
+through the contract. `InMemoryRaster` remains a straightforward array-backed implementation
+for synthetic fixtures and callers that already have a materialized pixel list.
 
 ### Color conversion (`ColorConverter`)
 
@@ -127,8 +126,9 @@ facade to the stages that own them.
 
 ## Performance & security considerations
 
-- **Memory** is the dominant cost, driven by `InMemoryRaster`. The `maxPixels` guard caps
-  it; downscale enormous images before analysis.
+- **Memory** is dominated by GD's decoded bitmap and the bounded cropper/histogram structures;
+  the default path does not retain one PHP object per source pixel or copy pixels when cropping.
+  The `maxPixels` guard caps accepted dimensions; downscale inputs above that ceiling.
 - **Attack surface** is deliberately small: GD is bundled and has a far smaller CVE history
   than ImageMagick, one reason it is the default (see [ADR-002](../ADR-002-gd-vs-imagick.md)).
 - **String inputs are never treated as paths**, which avoids a class of accidental
@@ -152,7 +152,7 @@ immutability, and `ColorConverter` accuracy against reference values.
 ## Review checklist
 
 - Interfaces stay backward-compatible unless an [ADR](../contracts.md) says otherwise.
-- No GD or Imagick object ever crosses a public contract boundary.
+- Native GD and Imagick handles remain private implementation details behind `Raster`.
 - Invalid bytes throw `InvalidImageException`; valid-but-unsupported inputs throw
   `UnsupportedImageException`.
 - String inputs are treated as bytes, not paths.

@@ -51,7 +51,7 @@ to the in-depth module guide.
 | Stage | Responsibility | Key classes | Module guide |
 |---|---|---|---|
 | **Source resolution** | Accept a path, stream, raw bytes, or GD image; sniff PNG/JPEG from magic bytes; normalize to an `ImageSource`. | `SourceResolver`, `FileImageSource` | [Image Loading](modules/image-loading.md) |
-| **Image loading** | Decode with GD (default) or Imagick (optional); normalize palette/grayscale to truecolor; expand alpha to 0–255; reject CMYK JPEG and oversized images. | `GdImageLoader`, `ImagickImageLoader`, `InMemoryRaster` | [Image Loading](modules/image-loading.md) |
+| **Image loading** | Decode with GD (default) or Imagick (optional); normalize palette/grayscale to truecolor; expose pixels through an immutable lazy raster; reject CMYK JPEG and oversized images. | `GdImageLoader`, `ImagickImageLoader`, `GdRaster`, `InMemoryRaster` | [Image Loading](modules/image-loading.md) |
 | **Color conversion** | Provide sRGB ↔ XYZ ↔ CIELAB and HSV conversions plus ΔE distance — the shared math for cropping and clustering. | `ColorConverter` | [Image Loading](modules/image-loading.md) |
 | **Background cropping** | Trim the near-white / transparent border with a border-inward scan, judged in CIELAB. | `WhiteBackgroundCropper` | [White Background Cropper](modules/white-background-cropper.md) |
 | **Clustering** | Bin pixels into a weighted histogram, then group them with deterministic k-means++ in CIELAB and merge near-duplicates. | `ColorHistogram`, `KMeansClusterer`, `WeightedKMeans`, `KSelector` | [Clustering & Coverage](modules/color-clustering-and-coverage.md) |
@@ -122,11 +122,10 @@ Defaults and tuning guidance live in the module guides ([cropper](modules/white-
 
 ## Cross-cutting constraints
 
-- **Memory.** The default `InMemoryRaster` holds every decoded pixel in PHP memory. The
-  `maxPixels` guard (64 million by default) rejects images that would exhaust it *before*
-  allocation. For very large images, downscale before analysis, or supply a streaming
-  `Raster` implementation. Clustering itself is bounded by the histogram, not the pixel
-  count.
+- **Memory.** The default `GdRaster` retains one native GD bitmap, decodes `ColorRGBA` values
+  on demand, and represents crops as coordinate views over that bitmap. This avoids the former
+  per-pixel PHP object array and full crop copy. The `maxPixels` guard (64 million by default)
+  remains the upper bound; histogram size depends on color diversity rather than pixel count.
 - **Formats.** Only 8-bit PNG and JPEG are supported by the default GD driver. CMYK JPEG is
   explicitly rejected (route it through the optional Imagick loader). 16-bit and ICC-aware
   handling are out of scope for GD.
@@ -169,7 +168,7 @@ src/
   Contracts/              # frozen interfaces + DTOs (the integration seams)
   Options/                # CropOptions, ClusterOptions, AnalyzerOptions
   Exception/              # typed exception hierarchy
-  ImageLoader/            # GD loader, Imagick adapter, SourceResolver, InMemoryRaster
+  ImageLoader/            # GD loader, lazy GdRaster, Imagick adapter, SourceResolver
   Color/                  # ColorConverter: sRGB <-> Lab <-> HSV, ΔE
   WhiteBackgroundCropper/ # near-white, border-inward crop
   ColorClusterer/         # histogram + k-means++ + k selection + merge
