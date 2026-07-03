@@ -11,7 +11,7 @@ Types: `feat`, `fix`, `test`, `docs`, `refactor`, `perf`, `chore`, `ci`.
 
 ## Pull requests
 - Small and single-purpose. Fill in what/why + test evidence.
-- CI (cs-fixer + PHPStan L8 + PHPUnit on 8.3/8.4/8.5) must pass before review.
+- CI (cs-fixer + PHPStan L8 + PHPUnit on 8.2/8.3/8.4/8.5) must pass before review.
 - One non-author approval from the mapped `CODEOWNERS` reviewer. No self-merge.
 - **Squash-merge** into `main`.
 
