@@ -71,6 +71,7 @@ php examples/analyze_from_path.php tests/Fixtures/real/sample_transparent.png
 php examples/analyze_from_path.php tests/Fixtures/real/transparent_border.png
 php examples/analyze_from_path.php tests/Fixtures/real/logo_white_border.png
 php examples/analyze_from_path.php tests/Fixtures/real/scan_offwhite_border.jpg
+php examples/analyze_from_path.php tests/Fixtures/real/weighted-single-bin-accent.png
 ```
 
 These fixtures and their expected results are catalogued in

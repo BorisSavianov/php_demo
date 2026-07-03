@@ -71,8 +71,9 @@ source ─▶ ImageLoader ─▶ Raster ─▶ WhiteBackgroundCropper ─▶ Ras
    removes legitimate white inside the artwork**.
 3. **Clusterer** bins the cropped raster into a weighted color histogram (skipping
    transparent pixels), projects each bin to CIELAB, groups them with **k-means++ (seeded,
-   deterministic)**, picks `k` automatically via a weighted silhouette, and merges
-   near-duplicate / tiny clusters.
+   deterministic)**, picks `k` automatically via a two-view weighted silhouette, and merges
+   near-duplicate / tiny clusters. Candidate groupings must show structure across multiple
+   bins, while represented pixel support keeps substantial single-bin accent colors visible.
 4. **Coverage calculator** turns cluster weights into percentages using **largest-remainder**
    rounding, so the displayed values sum to exactly `100.0`.
 

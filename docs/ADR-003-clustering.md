@@ -43,19 +43,25 @@ Lloyd iterations (assign each bin to the nearest centroid by squared Lab distanc
 each centroid as the weight-weighted Lab mean) until assignments stabilize or the safety cap
 `WeightedKMeans::MAX_ITERATIONS` (100) is reached.
 
-### 4. Automatic k via silhouette, with a distinct-color fallback
+### 4. Automatic k via two-view silhouette, with a distinct-color fallback
 
-`KSelector` scores `k = 2 … min(kMax, bins − 1)` with a **weighted silhouette** and takes the
-best. Silhouette needs at least one multi-point cluster, so it can never score the
-all-singleton clustering `k = bins`. Two consequences are handled explicitly:
+`KSelector` evaluates `k = 2 … min(kMax, bins − 1)` with two views of **weighted
+silhouette** calculated from the same distance pass:
 
-- A lone point in its cluster contributes a silhouette of 0 (the standard convention),
-  preventing "every point its own cluster" from scoring a perfect 1.
-- When no `k` in the searchable range clears `STRUCTURE_THRESHOLD` (0.5, the conventional
-  "reasonable structure" cutoff), the bins have no real sub-structure — they are mutually
-  distinct colors — so `KSelector` returns `min(kMax, bins)` and lets the merge pass (below)
-  fold anything that is actually close. This is what makes a clean N-pure-color image resolve
-  to N clusters.
+- The **bin-structure score** applies the standard convention that a cluster containing one
+  histogram bin contributes 0. A candidate is eligible only when this score clears
+  `STRUCTURE_THRESHOLD` (0.5, the conventional "reasonable structure" cutoff). This keeps
+  gradients and anti-aliasing from fragmenting into one cluster per populated bin.
+- The **represented-pixel score** treats a bin of weight N as N coincident pixels when
+  calculating intra-cluster distance. It ranks the eligible candidates, allowing a
+  materially weighted accent that compresses to one bin to influence `k` instead of being
+  discarded as a singleton observation.
+
+Silhouette still cannot evaluate the all-singleton clustering `k = bins`. When no candidate
+clears the bin-structure threshold, the bins have no strong sub-structure — they are mutually
+distinct colors — so `KSelector` returns `min(kMax, bins)` and lets the merge pass (below)
+fold anything that is actually close. This is what makes a clean N-pure-color image resolve
+to N clusters.
 
 WCSS (the elbow diagnostic) is available via `WeightedKMeans::wcss()`. Silhouette is O(bins²)
 per `k`, so it is capped to the `SILHOUETTE_MAX_POINTS` (256) heaviest bins; the **final
@@ -111,6 +117,8 @@ spread," and — critically for a testable library — is deterministic.
 
 - Determinism requires the seeded local RNG and deterministic tie-breaks, which are
   themselves tested.
+- The two-view selector keeps compressed accent colors without allowing repeated pixels to
+  make every populated histogram bin look like a valid cluster.
 - The merge step is essential — without it, anti-aliasing halos appear as principal colors.
 - `MAX_ITERATIONS`, `SILHOUETTE_MAX_POINTS`, and `STRUCTURE_THRESHOLD` are documented tuning
   constants; the user-facing knobs live in `ClusterOptions`.

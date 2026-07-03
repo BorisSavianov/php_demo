@@ -21,13 +21,15 @@ pure `#FFFFFF` canvas.
 | `sample.jpg` | Same composition, JPEG (quality 95) | Same three colors; JPEG may add a small (~1%) near-white edge color |
 | `sample_transparent.png` | A magenta disk on a fully transparent background | `#BE1E8C` 100% (transparent pixels ignored) |
 | `colorful.jpeg` | A multi-color photograph-style image | Eight principal colors summing to `100.0` (see the [example run](../../docs/testing.md#example-run)) |
+| `weighted-single-bin-accent.png` | A 16×16 icon whose black accent compresses to one 13-pixel histogram bin | Blue `75.3%`, yellow `18.3%`, black `6.4%` |
 
 The PNG bands are pure colors, so cropping + clustering reproduce the 50/30/20 split exactly.
 The JPEG variant demonstrates robustness to compression artifacts.
 
-The bordered fixtures used specifically by the cropper's real-image integration test
-(`logo_white_border.png`, `transparent_border.png`, `scan_offwhite_border.jpg`) are
-documented separately in [`real/README.md`](real/README.md).
+The weighted-single-bin fixture is the end-to-end regression for automatic `k` selection
+through both path and file-handle APIs. The bordered fixtures used specifically by the
+cropper's real-image integration test (`logo_white_border.png`, `transparent_border.png`,
+`scan_offwhite_border.jpg`) are documented separately in [`real/README.md`](real/README.md).
 
 ## `generated/`
 

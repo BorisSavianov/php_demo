@@ -9,10 +9,12 @@ use ImageColorAnalyzer\Color\ColorConverter;
 /**
  * OWNER: Developer C.
  *
- * Chooses the number of clusters k. Primary criterion: a weighted silhouette
- * score over the histogram bins for k in 2..kMax; the higher the score, the
- * better-separated the clusters. Within-cluster sum of squares (the elbow/WCSS
- * curve) is available via {@see WeightedKMeans::wcss()} for diagnostics.
+ * Chooses the number of clusters k using two views of weighted silhouette over
+ * the histogram bins for k in 2..kMax. A conservative bin-structure score keeps
+ * gradients from fragmenting into one cluster per bin; a represented-pixel score
+ * ranks the eligible candidates so meaningful one-bin accents keep their weight.
+ * Within-cluster sum of squares (the elbow/WCSS curve) is available via
+ * {@see WeightedKMeans::wcss()} for diagnostics.
  *
  * Silhouette is O(bins^2) per candidate k, so the scored set is capped to the
  * heaviest {@see SILHOUETTE_MAX_POINTS} bins (the rest contribute negligible
@@ -63,12 +65,22 @@ final class KSelector
         $searchUpper = min($kMax, $m - 1);
 
         $bestK = 0;
-        $bestScore = -INF;
+        $bestPixelScore = -INF;
         for ($k = 2; $k <= $searchUpper; $k++) {
             $result = $this->kmeans->run($points, $pointWeights, $k, $seed);
-            $score = $this->weightedSilhouette($points, $pointWeights, $result['assignments'], $k);
-            if ($score > $bestScore) {
-                $bestScore = $score;
+            [$structureScore, $pixelScore] = $this->weightedSilhouettes(
+                $points,
+                $pointWeights,
+                $result['assignments'],
+                $k,
+            );
+
+            // Require structure across multiple histogram bins before a candidate
+            // can win. Among structurally valid candidates, account for the full
+            // represented pixel population so a substantial one-bin accent is not
+            // discarded merely because histogram compression made it a singleton.
+            if ($structureScore >= self::STRUCTURE_THRESHOLD && $pixelScore > $bestPixelScore) {
+                $bestPixelScore = $pixelScore;
                 $bestK = $k;
             }
         }
@@ -76,7 +88,7 @@ final class KSelector
         // A clearly good grouping wins outright. Otherwise the bins have no strong
         // sub-structure (e.g. a handful of mutually distinct print colors), so treat
         // each heavy bin as its own color and let the merge pass fold the rest.
-        if ($bestK > 0 && $bestScore >= self::STRUCTURE_THRESHOLD) {
+        if ($bestK > 0) {
             return $bestK;
         }
 
@@ -117,19 +129,24 @@ final class KSelector
     }
 
     /**
-     * Weighted mean silhouette across all points, in [-1, 1].
+     * Returns two weighted mean silhouettes in [-1, 1]. The structure score
+     * applies the standard singleton-bin convention and prevents histogram bins
+     * from being over-selected as individual colors. The pixel score treats each
+     * bin weight as coincident represented pixels, so a one-bin cluster with real
+     * coverage can still influence the ranking of structurally valid candidates.
      *
      * @param list<array{0:float,1:float,2:float}> $points
      * @param list<int>                            $weights
      * @param list<int>                            $assignments
+     *
+     * @return array{0:float,1:float} structure score, represented-pixel score
      */
-    private function weightedSilhouette(array $points, array $weights, array $assignments, int $k): float
+    private function weightedSilhouettes(array $points, array $weights, array $assignments, int $k): array
     {
         $n = count($points);
 
-        // Total weight and point count per cluster. The count lets us apply the
-        // silhouette convention that a lone point in its cluster scores 0 (not 1,
-        // which a naive a=0 would produce and would wrongly favor k = n).
+        // Track both represented pixel weight and histogram-bin count because the
+        // two scores intentionally use different singleton conventions.
         $weightInCluster = array_fill(0, $k, 0);
         $countInCluster = array_fill(0, $k, 0);
         foreach ($assignments as $i => $cluster) {
@@ -138,15 +155,11 @@ final class KSelector
         }
 
         $totalWeight = 0;
-        $weightedScore = 0.0;
+        $weightedStructureScore = 0.0;
+        $weightedPixelScore = 0.0;
         for ($i = 0; $i < $n; $i++) {
             $own = $assignments[$i];
             $totalWeight += $weights[$i];
-
-            // A point alone in its cluster contributes 0 by convention.
-            if ($countInCluster[$own] <= 1) {
-                continue;
-            }
 
             /** @var list<float> $distanceToCluster */
             $distanceToCluster = array_fill(0, $k, 0.0);
@@ -156,9 +169,6 @@ final class KSelector
                 }
                 $distanceToCluster[$assignments[$j]] += $weights[$j] * $this->converter->deltaE($points[$i], $points[$j]);
             }
-
-            $ownWeight = $weightInCluster[$own] - $weights[$i];
-            $a = $ownWeight > 0 ? $distanceToCluster[$own] / $ownWeight : 0.0;
 
             $b = INF;
             for ($c = 0; $c < $k; $c++) {
@@ -171,15 +181,30 @@ final class KSelector
                 }
             }
 
-            $s = 0.0;
-            if ($b !== INF) {
-                $max = max($a, $b);
-                $s = $max > 0.0 ? ($b - $a) / $max : 0.0;
+            if ($b === INF) {
+                continue;
             }
 
-            $weightedScore += $weights[$i] * $s;
+            if ($countInCluster[$own] > 1) {
+                $otherBinWeight = $weightInCluster[$own] - $weights[$i];
+                $a = $otherBinWeight > 0 ? $distanceToCluster[$own] / $otherBinWeight : 0.0;
+                $max = max($a, $b);
+                $structureScore = $max > 0.0 ? ($b - $a) / $max : 0.0;
+                $weightedStructureScore += $weights[$i] * $structureScore;
+            }
+
+            if ($weightInCluster[$own] > 1) {
+                $a = $distanceToCluster[$own] / ($weightInCluster[$own] - 1);
+                $max = max($a, $b);
+                $pixelScore = $max > 0.0 ? ($b - $a) / $max : 0.0;
+                $weightedPixelScore += $weights[$i] * $pixelScore;
+            }
         }
 
-        return $totalWeight > 0 ? $weightedScore / $totalWeight : 0.0;
+        if ($totalWeight === 0) {
+            return [0.0, 0.0];
+        }
+
+        return [$weightedStructureScore / $totalWeight, $weightedPixelScore / $totalWeight];
     }
 }

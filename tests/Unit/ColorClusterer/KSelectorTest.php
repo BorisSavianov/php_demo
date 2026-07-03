@@ -60,6 +60,27 @@ final class KSelectorTest extends TestCase
         self::assertSame(2, $this->selector->select($points, [3, 7], 8, 1));
     }
 
+    public function testWeightedSingleBinAccentInfluencesEligibleCandidateRanking(): void
+    {
+        $bins = [
+            ['rgb' => new ColorRGBA(0, 0, 0), 'weight' => 13],
+            ['rgb' => new ColorRGBA(55, 120, 190), 'weight' => 20],
+            ['rgb' => new ColorRGBA(115, 165, 202), 'weight' => 50],
+            ['rgb' => new ColorRGBA(210, 245, 255), 'weight' => 30],
+            ['rgb' => new ColorRGBA(225, 190, 50), 'weight' => 10],
+            ['rgb' => new ColorRGBA(255, 210, 50), 'weight' => 27],
+        ];
+
+        $points = [];
+        $weights = [];
+        foreach ($bins as $bin) {
+            $points[] = $this->converter->rgbToLab($bin['rgb']);
+            $weights[] = $bin['weight'];
+        }
+
+        self::assertSame(3, $this->selector->select($points, $weights, 8, 1));
+    }
+
     public function testNeverExceedsKMax(): void
     {
         [$points, $weights] = $this->colorGroups([

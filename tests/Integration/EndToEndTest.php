@@ -141,6 +141,27 @@ final class EndToEndTest extends TestCase
         self::assertEqualsWithDelta(100.0, array_sum($this->byColor($colors)), 1e-9);
     }
 
+    public function testAutomaticKPreservesWeightedSingleBinAccentFromRealImage(): void
+    {
+        $path = __DIR__ . '/../Fixtures/real/weighted-single-bin-accent.png';
+        $expected = [
+            ['color' => '#8FC4E2', 'coverage_percent' => 75.3],
+            ['color' => '#F8C83E', 'coverage_percent' => 18.3],
+            ['color' => '#000000', 'coverage_percent' => 6.4],
+        ];
+
+        $analyzer = AnalyzerFactory::createDefault();
+        self::assertSame($expected, $analyzer->analyzePath($path));
+
+        $handle = fopen($path, 'rb');
+        self::assertIsResource($handle);
+        try {
+            self::assertSame($expected, $analyzer->analyze($handle));
+        } finally {
+            fclose($handle);
+        }
+    }
+
     /**
      * @param callable(\GdImage):void $draw
      *

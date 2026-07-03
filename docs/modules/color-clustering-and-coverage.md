@@ -36,9 +36,9 @@ this guide is the operational reference.
 3. **Cluster.** `WeightedKMeans` runs deterministic weighted k-means++ seeding followed by
    Lloyd iterations, all in Lab. Distances in the hot loop are *squared* Euclidean (no
    `sqrt`), which preserves nearest-centroid ordering.
-4. **Choose `k`.** If `fixedK` is `null`, `KSelector` scores candidate `k` values with a
-   weighted [silhouette](../glossary.md) and picks the best; otherwise the supplied `k` is
-   used (clamped to the number of bins).
+4. **Choose `k`.** If `fixedK` is `null`, `KSelector` evaluates candidate `k` values with
+   two weighted [silhouette](../glossary.md) views and picks the best eligible candidate;
+   otherwise the supplied `k` is used (clamped to the number of bins).
 5. **Merge.** `KMeansClusterer` merges clusters within `mergeDeltaE` of each other, then
    folds any cluster below `minClusterCoverage` into its nearest surviving neighbor.
 6. **Finalize.** Surviving clusters are sorted by weight descending (ties broken by hex
@@ -47,12 +47,22 @@ this guide is the operational reference.
 
 ### `k` selection details
 
-`KSelector` searches `k = 2 … min(kMax, bins − 1)` and keeps the best-scoring `k`, but only
-if that score clears `STRUCTURE_THRESHOLD` (0.5, the conventional "reasonable structure"
-cutoff). If nothing clears it, the bins have no real sub-structure — they are already
-mutually distinct colors — so it returns `min(kMax, bins)` and lets the merge pass fold
-anything genuinely close. This is what makes a clean N-pure-color image resolve to exactly N
-principal colors. Because silhouette is O(bins²) per `k`, scoring is capped to the
+`KSelector` searches `k = 2 … min(kMax, bins − 1)` and computes two scores for each
+candidate:
+
+- A **bin-structure score** uses the standard convention that a cluster containing one
+  histogram bin has silhouette `0`. A candidate must clear `STRUCTURE_THRESHOLD` (`0.5`)
+  on this score. This prevents smooth gradients and anti-aliasing bins from winning merely
+  because each bin represents repeated pixels.
+- A **represented-pixel score** conceptually expands each bin by its pixel weight. Eligible
+  candidates are ranked by this score, so a cluster containing one heavily weighted bin can
+  preserve a materially present accent color instead of being penalized as one observation.
+
+If no candidate clears the structure threshold, the bins have no strong sub-structure —
+they are already mutually distinct colors — so the selector returns `min(kMax, bins)` and
+lets the merge pass fold anything genuinely close. This is what makes a clean N-pure-color
+image resolve to exactly N principal colors. Both scores share the same distance pass, so
+the complexity remains O(bins²) per `k`. Scoring is capped to the
 `SILHOUETTE_MAX_POINTS` (256) heaviest bins; the **final clustering still uses every bin.**
 
 ### Determinism
@@ -113,6 +123,7 @@ Core tests cover:
 
 - three-color grouping and centroid proximity,
 - automatic `k` and fixed `k`,
+- preservation of a materially weighted single-bin accent without over-selecting bins,
 - determinism for a fixed seed,
 - transparent-pixel exclusion,
 - merge and low-coverage fold behavior,
