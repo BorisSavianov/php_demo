@@ -155,7 +155,6 @@ final class GdImageLoaderTest extends TestCase
         ob_start();
         $encoded = imagejpeg($image, null, 100);
         $bytes = ob_get_clean();
-        imagedestroy($image);
 
         if ($encoded === false || !is_string($bytes)) {
             self::fail('Unable to encode JPEG test fixture.');
@@ -169,7 +168,6 @@ final class GdImageLoaderTest extends TestCase
         ob_start();
         $encoded = imagepng($image);
         $bytes = ob_get_clean();
-        imagedestroy($image);
 
         if ($encoded === false || !is_string($bytes)) {
             self::fail('Unable to encode PNG test fixture.');

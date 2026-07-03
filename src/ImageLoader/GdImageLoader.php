@@ -50,19 +50,13 @@ final class GdImageLoader implements ImageLoaderInterface
         $this->rejectUnsupportedJpeg($source, $bytes);
 
         $image = $this->createImageFromBytes($bytes);
+        // Reject oversized inputs before allocating the normalized copy or the
+        // per-pixel raster. GD images are freed by the garbage collector since
+        // PHP 8.0, so no explicit imagedestroy() is needed (and it is deprecated
+        // as a no-op in 8.5).
+        $this->assertImageSizeSupported($image);
 
-        try {
-            $this->assertImageSizeSupported($image);
-            $normalized = $this->normalizeTruecolorWithAlpha($image);
-            if ($normalized !== $image) {
-                imagedestroy($image);
-                $image = $normalized;
-            }
-
-            return $this->rasterFromGdImage($image);
-        } finally {
-            imagedestroy($image);
-        }
+        return $this->rasterFromGdImage($this->normalizeTruecolorWithAlpha($image));
     }
 
     private function rejectUnsupportedJpeg(ImageSource $source, string $bytes): void
@@ -140,40 +134,33 @@ final class GdImageLoader implements ImageLoaderInterface
 
         $transparent = imagecolorallocatealpha($truecolor, 0, 0, 0, 127);
         if ($transparent === false) {
-            imagedestroy($truecolor);
             throw new InvalidImageException('Unable to allocate transparent palette color.');
         }
         if (!imagefilledrectangle($truecolor, 0, 0, $width - 1, $height - 1, $transparent)) {
-            imagedestroy($truecolor);
             throw new InvalidImageException('Unable to initialize transparent truecolor image.');
         }
 
-        try {
-            for ($y = 0; $y < $height; $y++) {
-                for ($x = 0; $x < $width; $x++) {
-                    $index = imagecolorat($image, $x, $y);
-                    if ($index === false) {
-                        throw new InvalidImageException("Unable to read palette pixel ({$x},{$y}).");
-                    }
-                    $channels = imagecolorsforindex($image, $index);
-                    $color = imagecolorallocatealpha(
-                        $truecolor,
-                        $channels['red'],
-                        $channels['green'],
-                        $channels['blue'],
-                        $channels['alpha'],
-                    );
-                    if ($color === false) {
-                        throw new InvalidImageException('Unable to allocate normalized truecolor pixel.');
-                    }
-                    if (!imagesetpixel($truecolor, $x, $y, $color)) {
-                        throw new InvalidImageException("Unable to write normalized pixel ({$x},{$y}).");
-                    }
+        for ($y = 0; $y < $height; $y++) {
+            for ($x = 0; $x < $width; $x++) {
+                $index = imagecolorat($image, $x, $y);
+                if ($index === false) {
+                    throw new InvalidImageException("Unable to read palette pixel ({$x},{$y}).");
+                }
+                $channels = imagecolorsforindex($image, $index);
+                $color = imagecolorallocatealpha(
+                    $truecolor,
+                    $channels['red'],
+                    $channels['green'],
+                    $channels['blue'],
+                    $channels['alpha'],
+                );
+                if ($color === false) {
+                    throw new InvalidImageException('Unable to allocate normalized truecolor pixel.');
+                }
+                if (!imagesetpixel($truecolor, $x, $y, $color)) {
+                    throw new InvalidImageException("Unable to write normalized pixel ({$x},{$y}).");
                 }
             }
-        } catch (InvalidImageException $e) {
-            imagedestroy($truecolor);
-            throw $e;
         }
 
         return $truecolor;
@@ -181,8 +168,6 @@ final class GdImageLoader implements ImageLoaderInterface
 
     private function rasterFromGdImage(\GdImage $image): Raster
     {
-        $this->assertImageSizeSupported($image);
-
         $width = imagesx($image);
         $height = imagesy($image);
 

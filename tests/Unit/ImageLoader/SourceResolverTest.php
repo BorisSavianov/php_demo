@@ -88,13 +88,9 @@ final class SourceResolverTest extends TestCase
             self::fail('Unable to create a GD image.');
         }
 
-        try {
-            $source = (new SourceResolver())->resolve($image);
+        $source = (new SourceResolver())->resolve($image);
 
-            self::assertSame(ImageFormat::PNG, $source->detectedFormat());
-        } finally {
-            imagedestroy($image);
-        }
+        self::assertSame(ImageFormat::PNG, $source->detectedFormat());
     }
 
     public function testRejectsUnsupportedType(): void
