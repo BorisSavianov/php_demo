@@ -84,7 +84,8 @@ decoded image to truecolor with an explicit alpha channel before building a rast
 The library's central data structure: an immutable, row-major grid of `ColorRGBA` pixels
 behind the `Raster` interface (`width()`, `height()`, `hasAlpha()`, `pixelAt()`,
 `pixels()`, `crop()`). Every stage after loading consumes and/or produces a `Raster`. The
-default implementation, `InMemoryRaster`, holds all pixels in PHP memory.
+default `GdRaster` reads pixels lazily from a private native bitmap and represents crops as
+views; `InMemoryRaster` materializes a pixel list for synthetic or custom use cases.
 
 ---
 
@@ -174,8 +175,7 @@ equally valid clusterings.
 
 ### `maxPixels` guard
 A ceiling on total image size (`GdImageLoader`, default `64_000_000` pixels). Images above
-it are rejected with `UnsupportedImageException` **before** a per-pixel raster is allocated,
-protecting against memory exhaustion.
+it are rejected with `UnsupportedImageException` before normalization and analysis begin.
 
 ---
 

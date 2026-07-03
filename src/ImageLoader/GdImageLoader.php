@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace ImageColorAnalyzer\ImageLoader;
 
-use ImageColorAnalyzer\Contracts\ColorRGBA;
 use ImageColorAnalyzer\Contracts\ImageFormat;
 use ImageColorAnalyzer\Contracts\ImageLoaderInterface;
 use ImageColorAnalyzer\Contracts\ImageSource;
@@ -50,13 +49,13 @@ final class GdImageLoader implements ImageLoaderInterface
         $this->rejectUnsupportedJpeg($source, $bytes);
 
         $image = $this->createImageFromBytes($bytes);
-        // Reject oversized inputs before allocating the normalized copy or the
-        // per-pixel raster. GD images are freed by the garbage collector since
+        // Reject oversized inputs before allocating the normalized copy. GD
+        // images are freed by the garbage collector since
         // PHP 8.0, so no explicit imagedestroy() is needed (and it is deprecated
         // as a no-op in 8.5).
         $this->assertImageSizeSupported($image);
 
-        return $this->rasterFromGdImage($this->normalizeTruecolorWithAlpha($image));
+        return new GdRaster($this->normalizeTruecolorWithAlpha($image));
     }
 
     private function rejectUnsupportedJpeg(ImageSource $source, string $bytes): void
@@ -164,42 +163,6 @@ final class GdImageLoader implements ImageLoaderInterface
         }
 
         return $truecolor;
-    }
-
-    private function rasterFromGdImage(\GdImage $image): Raster
-    {
-        $width = imagesx($image);
-        $height = imagesy($image);
-
-        /** @var list<ColorRGBA> $pixels */
-        $pixels = [];
-        $hasAlpha = false;
-
-        for ($y = 0; $y < $height; $y++) {
-            for ($x = 0; $x < $width; $x++) {
-                $color = $this->readPixel($image, $x, $y);
-                $pixels[] = $color;
-                $hasAlpha = $hasAlpha || $color->a < 255;
-            }
-        }
-
-        return new InMemoryRaster($width, $height, $pixels, $hasAlpha);
-    }
-
-    private function readPixel(\GdImage $image, int $x, int $y): ColorRGBA
-    {
-        $rgba = imagecolorat($image, $x, $y);
-        if ($rgba === false) {
-            throw new InvalidImageException("Unable to read pixel ({$x},{$y}) from GD image.");
-        }
-        $gdAlpha = ($rgba & 0x7F000000) >> 24;
-
-        return new ColorRGBA(
-            ($rgba >> 16) & 0xFF,
-            ($rgba >> 8) & 0xFF,
-            $rgba & 0xFF,
-            (int) round((127 - $gdAlpha) * 255 / 127),
-        );
     }
 
     private function assertImageSizeSupported(\GdImage $image): void

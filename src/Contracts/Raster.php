@@ -6,7 +6,9 @@ namespace ImageColorAnalyzer\Contracts;
 
 /**
  * An immutable, decoded bitmap. The shared "currency" passed between components.
- * Concrete implementation: {@see \ImageColorAnalyzer\ImageLoader\InMemoryRaster}.
+ * The default loader returns {@see \ImageColorAnalyzer\ImageLoader\GdRaster};
+ * {@see \ImageColorAnalyzer\ImageLoader\InMemoryRaster} remains available for
+ * synthetic and custom rasters.
  */
 interface Raster
 {

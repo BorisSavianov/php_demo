@@ -14,7 +14,7 @@ system library.
 ## Decision
 
 Ship **GD as the default loader** behind `ImageLoaderInterface`, and provide an optional
-`ImagickImageLoader` for CMYK/ICC-aware or very large images. Callers get the GD-backed
+`ImagickImageLoader` for CMYK/ICC-aware normalization. Callers get the GD-backed
 analyzer from `AnalyzerFactory::createDefault()`; nothing downstream knows which driver
 produced the [`Raster`](contracts.md).
 
@@ -26,7 +26,7 @@ produced the [`Raster`](contracts.md).
 | 8-bit PNG/JPEG decode | Fully sufficient | Fully sufficient |
 | Per-pixel RGBA access | Native | Native |
 | Advanced formats (CMYK, ICC, 16-bit, TIFF) | Not supported | Supported |
-| Memory model | Full bitmap in PHP memory | Can stream / memory-map very large images |
+| Memory model | Native bitmap behind a lazy raster view | Imagick normalization followed by the same lazy GD raster |
 | Security / ops surface | Small | Larger CVE history; needs `policy.xml` tuning |
 | CI simplicity | Trivial | Requires a system package install |
 
@@ -38,12 +38,12 @@ slot in with **zero downstream changes** whenever advanced formats are genuinely
 ## Consequences
 
 - **CMYK JPEG is a known GD limitation.** GD decodes CMYK JPEGs unreliably, so `GdImageLoader`
-  detects the 4-channel case and either routes to the Imagick adapter (if present) or raises
-  `UnsupportedImageException` with clear guidance. This is a documented, intentional
-  limitation rather than a silent wrong result.
-- **Very large images** are handled in the default path by [histogram binning](ADR-003-clustering.md)
-  and the `maxPixels` guard (rejecting oversized inputs before allocation), rather than by
-  Imagick's streaming. Downscale enormous images before analysis if needed.
+  detects the 4-channel case and raises `UnsupportedImageException` with clear guidance.
+  Callers that require CMYK normalization can explicitly select `ImagickImageLoader`. This is
+  a documented, intentional limitation rather than a silent wrong result.
+- **Large accepted images** use a lazy GD-backed raster, coordinate-view crops, and
+  [histogram binning](ADR-003-clustering.md), avoiding per-pixel PHP object storage. The
+  `maxPixels` guard rejects inputs above the supported ceiling; downscale those before analysis.
 - CI runs the GD path across PHP 8.2–8.5 and exercises the Imagick adapter in a separate job
   on PHP 8.4, so both drivers stay verified.
 
