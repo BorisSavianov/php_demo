@@ -187,9 +187,10 @@ the rationale, and the consequences. The project's ADRs live in [`docs/`](.) and
 canonical record of *why* the system is built the way it is.
 
 ### Facade
-The single public entry point, `ImageColorAnalyzer`, that wires the four pipeline stages
-together and exposes the `analyze*()` methods. Callers interact only with the facade (and
-`AnalyzerFactory`), never with individual stages.
+The single public entry point, `ImageColorAnalyzer`, that wires the pipeline stages together
+and exposes the legacy `analyze*()` methods plus the additive `process*()` cropped-image
+methods. Callers interact only with the facade (and `AnalyzerFactory`), never with
+individual stages.
 
 ### Frozen contract
 An interface or DTO in `src/Contracts` or `src/Options` that downstream code builds against

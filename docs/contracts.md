@@ -23,7 +23,11 @@ long before its neighbors existed. For the wider picture of how these types conn
 | `Cluster` | one principal color pre-coverage | `centroid` (`ColorRGBA`), `lab` (`[L,a,b]`), `weight` (int) |
 | `ClusterResult` | clusterer output | `clusters` (`list<Cluster>`), `totalAnalyzedPixels` (transparent already excluded) |
 | `ColorCoverage` | one result item | `color` (`#RRGGBB`), `rgb`, `coveragePercent`; `toArray()` → `{color, coverage_percent}` |
+| `EncodedImage` | immutable canonical PNG payload | `bytes`, `format` (`PNG`), `mediaType` (`image/png`), `width`, `height`, `saveTo()` |
 | `ImageFormat` *(enum)* | detected format | `PNG`, `JPEG` |
+
+`PublicAPI\ProcessedImageResult` is the additive facade response: `json`, `croppedImage`,
+`sourceBoundingBox`, and `wasCropped`.
 
 ## Options (`src/Options`)
 
@@ -46,16 +50,19 @@ Default values and tuning guidance are documented in the module guides:
 | `CropperInterface` | `crop(Raster, CropOptions): CropResult` | Cropper |
 | `ClustererInterface` | `cluster(Raster, ClusterOptions): ClusterResult` | Clustering |
 | `CoverageCalculatorInterface` | `calculate(ClusterResult): list<ColorCoverage>` | Coverage |
+| `PngEncoderInterface` | `encode(Raster): EncodedImage` | Image encoding |
 
 ## Data flow
 
 ```text
-ImageSource ─▶ ImageLoader ─▶ Raster ─▶ Cropper ─▶ Raster ─▶ Clusterer ─▶ ClusterResult ─▶ CoverageCalculator ─▶ ColorCoverage[]
+ImageSource ─▶ ImageLoader ─▶ Raster ─▶ Cropper ─▶ Raster ─┬▶ Clusterer ─▶ ClusterResult ─▶ CoverageCalculator ─▶ ColorCoverage[]
+                                                          └▶ PngEncoder ─▶ EncodedImage
 ```
 
 The `PublicAPI\ImageColorAnalyzer` facade sequences these stages. The cropper and clusterer
 never call each other directly; the facade unwraps `CropResult->raster` and passes it on, so
-the stages stay fully decoupled.
+the stages stay fully decoupled. `process*()` combines the serialized coverage list and
+encoded crop in `ProcessedImageResult`; existing `analyze*()` calls do not encode PNG data.
 
 ## Change policy
 
@@ -70,4 +77,5 @@ Any change under `src/Contracts` or `src/Options`:
 
 [Architecture](architecture.md) · [Glossary](glossary.md) ·
 [Image Loading](modules/image-loading.md) · [White Background Cropper](modules/white-background-cropper.md) ·
-[Clustering & Coverage](modules/color-clustering-and-coverage.md) · [CONTRIBUTING](../CONTRIBUTING.md)
+[Clustering & Coverage](modules/color-clustering-and-coverage.md) ·
+[ADR-004 Cropped image output](ADR-004-cropped-image-output.md) · [CONTRIBUTING](../CONTRIBUTING.md)

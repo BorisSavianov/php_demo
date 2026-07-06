@@ -7,6 +7,7 @@ namespace ImageColorAnalyzer\ImageLoader;
 use ImageColorAnalyzer\Contracts\BoundingBox;
 use ImageColorAnalyzer\Contracts\ColorRGBA;
 use ImageColorAnalyzer\Contracts\Raster;
+use ImageColorAnalyzer\Exception\ImageEncodingException;
 use ImageColorAnalyzer\Exception\InvalidImageException;
 use InvalidArgumentException;
 
@@ -124,6 +125,29 @@ final class GdRaster implements Raster
             $box->width,
             $box->height,
         );
+    }
+
+    /**
+     * Copies this raster view with native GD operations for the PNG encoder.
+     *
+     * @internal
+     */
+    public function copyToGdImage(): \GdImage
+    {
+        $copy = imagecrop($this->image, [
+            'x' => $this->originX,
+            'y' => $this->originY,
+            'width' => $this->width,
+            'height' => $this->height,
+        ]);
+        if (!$copy instanceof \GdImage) {
+            throw new ImageEncodingException('Unable to copy the GD raster view for PNG encoding.');
+        }
+
+        imagealphablending($copy, false);
+        imagesavealpha($copy, true);
+
+        return $copy;
     }
 
     private function colorAt(int $x, int $y): ColorRGBA

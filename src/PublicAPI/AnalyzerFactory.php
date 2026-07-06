@@ -9,6 +9,7 @@ use ImageColorAnalyzer\ColorClusterer\ColorHistogram;
 use ImageColorAnalyzer\ColorClusterer\KMeansClusterer;
 use ImageColorAnalyzer\ColorClusterer\KSelector;
 use ImageColorAnalyzer\CoverageCalculator\PercentageCoverageCalculator;
+use ImageColorAnalyzer\ImageEncoder\GdPngEncoder;
 use ImageColorAnalyzer\ImageLoader\GdImageLoader;
 use ImageColorAnalyzer\WhiteBackgroundCropper\WhiteBackgroundCropper;
 
@@ -26,6 +27,7 @@ final class AnalyzerFactory
             new WhiteBackgroundCropper($converter),
             new KMeansClusterer($converter, new ColorHistogram(), new KSelector($converter)),
             new PercentageCoverageCalculator(),
+            pngEncoder: new GdPngEncoder(),
         );
     }
 }

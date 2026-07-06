@@ -38,6 +38,7 @@ print color with its coverage percentage. Everything here describes the system a
 | [ADR-001](ADR-001-color-space.md) | Analyze in CIELAB rather than sRGB or HSV. |
 | [ADR-002](ADR-002-gd-vs-imagick.md) | GD as the default image driver; Imagick as an optional adapter. |
 | [ADR-003](ADR-003-clustering.md) | k-means++ over a weighted histogram, with automatic `k`. |
+| [ADR-004](ADR-004-cropped-image-output.md) | Add new processed-result methods with canonical cropped PNG bytes while preserving legacy JSON. |
 
 ### Testing
 
@@ -67,6 +68,7 @@ flowchart TD
     IL -.decision.-> ADR1[ADR-001 Color space]
     IL -.decision.-> ADR2[ADR-002 GD vs Imagick]
     CLUST -.decision.-> ADR3[ADR-003 Clustering]
+    IL -.decision.-> ADR4[ADR-004 Cropped PNG output]
     ARCH --> TEST[Testing guide]
     TEST --> FIX[Fixture inventories]
 ```

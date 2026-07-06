@@ -37,6 +37,9 @@ flowchart LR
     H -->|weighted bins| K[KMeansClusterer<br/>k-means++ in CIELAB]
     K -->|ClusterResult| V[PercentageCoverageCalculator]
     V -->|ColorCoverage&#91;&#93;| O([JSON / array])
+    C -->|cropped Raster| E[GdPngEncoder]
+    E -->|EncodedImage| P([ProcessedImageResult])
+    V --> P
 ```
 
 Every arrow is a **frozen DTO**, so a stage only needs to understand the value it receives,
@@ -56,7 +59,8 @@ to the in-depth module guide.
 | **Background cropping** | Trim the near-white / transparent border with a border-inward scan, judged in CIELAB. | `WhiteBackgroundCropper` | [White Background Cropper](modules/white-background-cropper.md) |
 | **Clustering** | Bin pixels into a weighted histogram, then group them with deterministic k-means++ in CIELAB and merge near-duplicates. | `ColorHistogram`, `KMeansClusterer`, `WeightedKMeans`, `KSelector` | [Clustering & Coverage](modules/color-clustering-and-coverage.md) |
 | **Coverage** | Convert cluster weights into percentages that sum to exactly `100.0`. | `PercentageCoverageCalculator` | [Clustering & Coverage](modules/color-clustering-and-coverage.md) |
-| **Facade** | Wire the stages, resolve options, expose `analyze*()`, serialize JSON. | `ImageColorAnalyzer`, `AnalyzerFactory` | this document |
+| **PNG encoding** | Encode the cropped raster as a lossless, alpha-preserving PNG when requested. | `GdPngEncoder`, `EncodedImage` | [Image Loading](modules/image-loading.md) |
+| **Facade** | Wire the stages, resolve options, expose `analyze*()` / `process*()`, and serialize JSON. | `ImageColorAnalyzer`, `AnalyzerFactory`, `ProcessedImageResult` | this document |
 
 ## Data flow, step by step
 
@@ -82,6 +86,9 @@ to the in-depth module guide.
 7. **Serialize.** The facade returns a `list<array{color, coverage_percent}>`; the
    `*AsJson` variants encode it as pretty JSON, preserving whole numbers as floats
    (`50.0`, not `50`).
+8. **Encode on request.** `process()` / `processPath()` retain the `CropResult`, encode its
+   raster as canonical PNG, and return it beside the exact same JSON and crop metadata.
+   Legacy `analyze*()` paths stop after serialization and never invoke the encoder.
 
 ## Design principles
 
@@ -92,6 +99,9 @@ to the in-depth module guide.
   touching anything downstream.
 - **Driver abstraction for image I/O.** GD is the default decoder; an Imagick adapter can be
   dropped in behind the same `ImageLoaderInterface`. See [ADR-002](ADR-002-gd-vs-imagick.md).
+- **Additive processed output.** Cropped PNG output is exposed by separate `process*()`
+  methods, preserving the released JSON contracts. See
+  [ADR-004](ADR-004-cropped-image-output.md).
 - **Perceptual analysis in CIELAB.** Both "is this pixel white?" and "are these two colors
   similar?" are judged in CIELAB, where distance tracks human perception. See
   [ADR-001](ADR-001-color-space.md).
@@ -126,6 +136,8 @@ Defaults and tuning guidance live in the module guides ([cropper](modules/white-
   on demand, and represents crops as coordinate views over that bitmap. This avoids the former
   per-pixel PHP object array and full crop copy. The `maxPixels` guard (64 million by default)
   remains the upper bound; histogram size depends on color diversity rather than pixel count.
+  `process*()` also materializes encoded PNG bytes and may allocate a native cropped copy;
+  `analyze*()` retains the original memory profile.
 - **Formats.** Only 8-bit PNG and JPEG are supported by the default GD driver. CMYK JPEG is
   explicitly rejected (route it through the optional Imagick loader). 16-bit and ICC-aware
   handling are out of scope for GD.
@@ -144,6 +156,8 @@ can catch every library error with a single `catch`:
 |---|---|
 | `InvalidImageException` | Bytes are not a decodable image, or metadata cannot be read. |
 | `UnsupportedImageException` | Format is recognized but unsupported by the driver — CMYK JPEG, non-PNG/JPEG, or an image exceeding `maxPixels`. |
+| `ImageEncodingException` | The cropped raster cannot be encoded as PNG. |
+| `ImageSaveException` | Encoded PNG bytes cannot be saved completely to the requested destination. |
 | `NotImplementedException` | A scaffold marker for intentionally unimplemented paths (`LogicException`). |
 
 The library never emits PHP warnings for malformed input; GD's native warnings are
@@ -169,13 +183,14 @@ src/
   Options/                # CropOptions, ClusterOptions, AnalyzerOptions
   Exception/              # typed exception hierarchy
   ImageLoader/            # GD loader, lazy GdRaster, Imagick adapter, SourceResolver
+  ImageEncoder/           # canonical PNG encoder with custom-raster fallback
   Color/                  # ColorConverter: sRGB <-> Lab <-> HSV, ΔE
   WhiteBackgroundCropper/ # near-white, border-inward crop
   ColorClusterer/         # histogram + k-means++ + k selection + merge
   CoverageCalculator/     # coverage percentages, largest-remainder rounding
   PublicAPI/              # ImageColorAnalyzer facade + AnalyzerFactory
 tests/                    # Unit, Integration, Support (fakes + synthetic factory), Fixtures
-examples/                 # runnable analyze_from_path.php / analyze_from_handle.php
+examples/                 # runnable analysis and cropped-image saving examples
 docs/                     # this knowledge base
 ```
 
@@ -183,5 +198,5 @@ docs/                     # this knowledge base
 
 - [Documentation index](README.md) — the full map of the docs suite.
 - [Frozen contracts](contracts.md) — exact interfaces and DTOs.
-- [ADR-001](ADR-001-color-space.md) · [ADR-002](ADR-002-gd-vs-imagick.md) · [ADR-003](ADR-003-clustering.md) — the decisions behind this architecture.
+- [ADR-001](ADR-001-color-space.md) · [ADR-002](ADR-002-gd-vs-imagick.md) · [ADR-003](ADR-003-clustering.md) · [ADR-004](ADR-004-cropped-image-output.md) — the decisions behind this architecture.
 - [Testing guide](testing.md) — how the guarantees above are verified.

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace ImageColorAnalyzer\Tests\Integration;
 
+use ImageColorAnalyzer\Contracts\ImageFormat;
 use ImageColorAnalyzer\Options\AnalyzerOptions;
 use ImageColorAnalyzer\Options\ClusterOptions;
 use ImageColorAnalyzer\PublicAPI\AnalyzerFactory;
 use ImageColorAnalyzer\PublicAPI\ImageColorAnalyzer;
+use ImageColorAnalyzer\PublicAPI\ProcessedImageResult;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -160,6 +162,133 @@ final class EndToEndTest extends TestCase
         } finally {
             fclose($handle);
         }
+    }
+
+    public function testProcessPathReturnsLegacyJsonAndCroppedPng(): void
+    {
+        $path = __DIR__ . '/../Fixtures/real/logo_white_border.png';
+        $analyzer = AnalyzerFactory::createDefault();
+
+        $result = $analyzer->processPath($path);
+
+        self::assertInstanceOf(ProcessedImageResult::class, $result);
+        self::assertSame($analyzer->analyzePathAsJson($path), $result->json);
+        self::assertSame(40, $result->sourceBoundingBox->x);
+        self::assertSame(30, $result->sourceBoundingBox->y);
+        self::assertSame(120, $result->sourceBoundingBox->width);
+        self::assertSame(90, $result->sourceBoundingBox->height);
+        self::assertTrue($result->wasCropped);
+        self::assertSame(120, $result->croppedImage->width);
+        self::assertSame(90, $result->croppedImage->height);
+
+        $image = imagecreatefromstring($result->croppedImage->bytes);
+        self::assertInstanceOf(\GdImage::class, $image);
+        self::assertSame(120, imagesx($image));
+        self::assertSame(90, imagesy($image));
+    }
+
+    public function testProcessAcceptsAFileHandle(): void
+    {
+        $handle = $this->pngHandle(60, 60, static function (\GdImage $img): void {
+            imagefilledrectangle($img, 0, 0, 59, 59, self::rgb($img, 255, 255, 255));
+            imagefilledrectangle($img, 10, 10, 49, 49, self::rgb($img, 200, 0, 0));
+        });
+
+        try {
+            $result = AnalyzerFactory::createDefault()->process($handle);
+        } finally {
+            fclose($handle);
+        }
+
+        self::assertTrue($result->wasCropped);
+        self::assertSame(40, $result->croppedImage->width);
+        self::assertSame(40, $result->croppedImage->height);
+        self::assertStringContainsString('#C80000', $result->json);
+    }
+
+    public function testProcessReturnsTheWholeImageWhenNoCropIsNeeded(): void
+    {
+        $handle = $this->pngHandle(30, 20, static function (\GdImage $img): void {
+            imagefilledrectangle($img, 0, 0, 29, 19, self::rgb($img, 255, 0, 0));
+        });
+
+        try {
+            $result = AnalyzerFactory::createDefault()->process($handle);
+        } finally {
+            fclose($handle);
+        }
+
+        self::assertFalse($result->wasCropped);
+        self::assertSame(0, $result->sourceBoundingBox->x);
+        self::assertSame(0, $result->sourceBoundingBox->y);
+        self::assertSame(30, $result->croppedImage->width);
+        self::assertSame(20, $result->croppedImage->height);
+    }
+
+    public function testProcessPreservesAWholeTransparentImage(): void
+    {
+        $handle = $this->pngHandle(8, 6, static function (\GdImage $img): void {
+            imagealphablending($img, false);
+            imagesavealpha($img, true);
+            imagefilledrectangle($img, 0, 0, 7, 5, self::rgba($img, 0, 0, 0, 127));
+        });
+
+        try {
+            $result = AnalyzerFactory::createDefault()->process($handle);
+        } finally {
+            fclose($handle);
+        }
+
+        self::assertSame('[]', trim($result->json));
+        self::assertFalse($result->wasCropped);
+        self::assertSame(8, $result->croppedImage->width);
+        self::assertSame(6, $result->croppedImage->height);
+
+        $image = imagecreatefromstring($result->croppedImage->bytes);
+        self::assertInstanceOf(\GdImage::class, $image);
+        $pixel = imagecolorat($image, 0, 0);
+        self::assertIsInt($pixel);
+        self::assertSame(127, ($pixel >> 24) & 0x7F);
+    }
+
+    public function testProcessPreservesMidAlphaPixelsInACroppedRegion(): void
+    {
+        $handle = $this->pngHandle(3, 3, static function (\GdImage $img): void {
+            imagealphablending($img, false);
+            imagesavealpha($img, true);
+            imagefilledrectangle($img, 0, 0, 2, 2, self::rgb($img, 255, 255, 255));
+            imagesetpixel($img, 1, 1, self::rgba($img, 12, 34, 56, 63));
+        });
+
+        try {
+            $result = AnalyzerFactory::createDefault()->process($handle);
+        } finally {
+            fclose($handle);
+        }
+
+        self::assertTrue($result->wasCropped);
+        self::assertSame(1, $result->croppedImage->width);
+        self::assertSame(1, $result->croppedImage->height);
+
+        $image = imagecreatefromstring($result->croppedImage->bytes);
+        self::assertInstanceOf(\GdImage::class, $image);
+        $pixel = imagecolorat($image, 0, 0);
+        self::assertIsInt($pixel);
+        self::assertSame([12, 34, 56, 63], [
+            ($pixel >> 16) & 0xFF,
+            ($pixel >> 8) & 0xFF,
+            $pixel & 0xFF,
+            ($pixel >> 24) & 0x7F,
+        ]);
+    }
+
+    public function testProcessConvertsJpegInputToCanonicalPng(): void
+    {
+        $result = AnalyzerFactory::createDefault()->processPath(__DIR__ . '/../Fixtures/real/sample.jpg');
+
+        self::assertSame(ImageFormat::PNG, $result->croppedImage->format);
+        self::assertSame('image/png', $result->croppedImage->mediaType);
+        self::assertStringStartsWith("\x89PNG\x0d\x0a\x1a\x0a", $result->croppedImage->bytes);
     }
 
     /**

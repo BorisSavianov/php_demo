@@ -7,7 +7,10 @@ namespace ImageColorAnalyzer\PublicAPI;
 use ImageColorAnalyzer\Contracts\ClustererInterface;
 use ImageColorAnalyzer\Contracts\CoverageCalculatorInterface;
 use ImageColorAnalyzer\Contracts\CropperInterface;
+use ImageColorAnalyzer\Contracts\CropResult;
 use ImageColorAnalyzer\Contracts\ImageLoaderInterface;
+use ImageColorAnalyzer\Contracts\PngEncoderInterface;
+use ImageColorAnalyzer\ImageEncoder\GdPngEncoder;
 use ImageColorAnalyzer\ImageLoader\SourceResolver;
 use ImageColorAnalyzer\Options\AnalyzerOptions;
 
@@ -19,14 +22,18 @@ final class ImageColorAnalyzer
 {
     private readonly SourceResolver $sourceResolver;
 
+    private readonly PngEncoderInterface $pngEncoder;
+
     public function __construct(
         private readonly ImageLoaderInterface $loader,
         private readonly CropperInterface $cropper,
         private readonly ClustererInterface $clusterer,
         private readonly CoverageCalculatorInterface $coverage,
         ?SourceResolver $sourceResolver = null,
+        ?PngEncoderInterface $pngEncoder = null,
     ) {
         $this->sourceResolver = $sourceResolver ?? new SourceResolver();
+        $this->pngEncoder = $pngEncoder ?? new GdPngEncoder();
     }
 
     /**
@@ -37,16 +44,7 @@ final class ImageColorAnalyzer
     {
         $options ??= new AnalyzerOptions();
 
-        $raster = $this->loader->load($this->sourceResolver->resolve($source));
-        $cropped = $this->cropper->crop($raster, $options->crop)->raster;
-        $clusters = $this->clusterer->cluster($cropped, $options->cluster);
-
-        $result = [];
-        foreach ($this->coverage->calculate($clusters) as $item) {
-            $result[] = $item->toArray();
-        }
-
-        return $result;
+        return $this->run($source, $options)['colors'];
     }
 
     /**
@@ -68,6 +66,51 @@ final class ImageColorAnalyzer
     public function analyzePathAsJson(string $path, ?AnalyzerOptions $options = null): string
     {
         return $this->toJson($this->analyzePath($path, $options));
+    }
+
+    /**
+     * Runs the analysis once and returns both its legacy JSON and the cropped PNG.
+     *
+     * @param mixed $source ImageSource, stream resource, raw image bytes, or GD image
+     */
+    public function process(mixed $source, ?AnalyzerOptions $options = null): ProcessedImageResult
+    {
+        $options ??= new AnalyzerOptions();
+        $analysis = $this->run($source, $options);
+        $crop = $analysis['crop'];
+
+        return new ProcessedImageResult(
+            $this->toJson($analysis['colors']),
+            $this->pngEncoder->encode($crop->raster),
+            $crop->boundingBox,
+            $crop->wasCropped,
+        );
+    }
+
+    public function processPath(string $path, ?AnalyzerOptions $options = null): ProcessedImageResult
+    {
+        return $this->process($this->sourceResolver->resolvePath($path), $options);
+    }
+
+    /**
+     * @param mixed $source ImageSource, stream resource, raw image bytes, or GD image
+     * @return array{
+     *     colors: list<array{color:string,coverage_percent:float}>,
+     *     crop: CropResult
+     * }
+     */
+    private function run(mixed $source, AnalyzerOptions $options): array
+    {
+        $raster = $this->loader->load($this->sourceResolver->resolve($source));
+        $crop = $this->cropper->crop($raster, $options->crop);
+        $clusters = $this->clusterer->cluster($crop->raster, $options->cluster);
+
+        $colors = [];
+        foreach ($this->coverage->calculate($clusters) as $item) {
+            $colors[] = $item->toArray();
+        }
+
+        return ['colors' => $colors, 'crop' => $crop];
     }
 
     /**

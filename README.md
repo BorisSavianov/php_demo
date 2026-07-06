@@ -40,6 +40,15 @@ $colors = $analyzer->analyzePath('/path/to/image.png');
 $handle = fopen('/path/to/image.jpg', 'rb');
 echo $analyzer->analyzeAsJson($handle);
 fclose($handle);
+
+// Return the same JSON together with a cropped, lossless PNG:
+$result = $analyzer->processPath('/path/to/image.jpg');
+echo $result->json;
+
+// Raw bytes can be streamed by an HTTP layer or saved directly:
+$pngBytes = $result->croppedImage->bytes;
+$result->croppedImage->saveTo('/path/to/cropped.png');
+// Pass overwrite: true to replace an existing destination explicitly.
 ```
 
 `analyze()` accepts an `ImageSource`, a stream resource, a GD image, or **raw image bytes**
@@ -48,6 +57,13 @@ fclose($handle);
 `list<array{color: string, coverage_percent: float}>` sorted by coverage descending; the
 `*AsJson` variants return the same as pretty JSON. Runnable scripts are in
 [`examples/`](examples).
+
+`process()` and `processPath()` run the same pipeline once and return a
+`ProcessedImageResult`: the exact legacy JSON string, lossless cropped PNG bytes, output
+dimensions, and the source-coordinate crop box. The library does not create files unless
+`EncodedImage::saveTo()` is called; parent directories must already exist, and existing
+files are protected unless `overwrite: true` is supplied. Explicit replacements are written
+to a sibling temporary file and atomically renamed into place.
 
 ## How it works
 
@@ -76,6 +92,8 @@ source ─▶ ImageLoader ─▶ Raster ─▶ WhiteBackgroundCropper ─▶ Ras
    bins, while represented pixel support keeps substantial single-bin accent colors visible.
 4. **Coverage calculator** turns cluster weights into percentages using **largest-remainder**
    rounding, so the displayed values sum to exactly `100.0`.
+5. **PNG encoder (opt-in)** encodes the same cropped raster returned by the cropper when a
+   `process*()` method is used. Legacy `analyze*()` calls do not perform this extra work.
 
 For the full picture, read the [architecture overview](docs/architecture.md).
 
@@ -118,6 +136,11 @@ Each entry is `{ "color": "#RRGGBB", "coverage_percent": float }`. Colors are up
 to one decimal and sum to exactly `100.0`. Transparent pixels are excluded from both the
 numerator and the denominator, so a fully transparent image yields `[]`.
 
+The `process*()` methods preserve this JSON byte-for-byte in `ProcessedImageResult::$json`
+and return the cropped bitmap as canonical PNG regardless of whether the input was PNG or
+JPEG. PNG is used to preserve exact crop pixels and alpha. If the cropper finds no removable
+border, the complete input raster is encoded and `wasCropped` is `false`.
+
 ## Guarantees & limitations
 
 - **Deterministic:** identical input and `seed` produce identical centroids, weights, and
@@ -132,6 +155,8 @@ numerator and the denominator, so a fully transparent image yields `[]`.
 - **Memory:** the default `GdRaster` reads pixels lazily from GD's native bitmap and represents
   crops as lightweight views, avoiding per-pixel PHP object arrays and crop duplication. The
   bitmap still scales with image dimensions, and the `maxPixels` guard remains the hard limit.
+  Calling `process*()` additionally materializes the PNG output; legacy analysis retains its
+  existing memory behavior.
 
 ## Documentation
 
@@ -145,7 +170,8 @@ The full knowledge base lives in [`docs/`](docs) — start with the
   [Clustering & Coverage](docs/modules/color-clustering-and-coverage.md)
 - Decisions: [ADR-001 color space](docs/ADR-001-color-space.md) ·
   [ADR-002 GD vs Imagick](docs/ADR-002-gd-vs-imagick.md) ·
-  [ADR-003 clustering](docs/ADR-003-clustering.md)
+  [ADR-003 clustering](docs/ADR-003-clustering.md) ·
+  [ADR-004 cropped PNG output](docs/ADR-004-cropped-image-output.md)
 - [Testing guide](docs/testing.md)
 
 ## Development
@@ -167,6 +193,7 @@ src/
   Options/                # CropOptions, ClusterOptions, AnalyzerOptions
   Exception/              # typed exception hierarchy
   ImageLoader/            # GD loader, lazy GdRaster, source handling, InMemoryRaster
+  ImageEncoder/           # lossless PNG encoding for processed results
   Color/                  # sRGB <-> Lab <-> HSV conversions, ΔE
   WhiteBackgroundCropper/ # near-white border-inward crop
   ColorClusterer/         # histogram + k-means++ + k selection

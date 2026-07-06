@@ -95,17 +95,27 @@ approximates perceived difference (see [ADR-001](../ADR-001-color-space.md)).
 
 ### Facade and output (`ImageColorAnalyzer`, `AnalyzerFactory`)
 
-`ImageColorAnalyzer` composes the four stage interfaces via constructor injection and
+`ImageColorAnalyzer` composes the five stage interfaces via constructor injection and
 exposes:
 
 - `analyze($source, ?AnalyzerOptions)` — for an `ImageSource`, stream resource, raw bytes,
   or GD image.
 - `analyzePath($path, ?AnalyzerOptions)` — for filesystem paths.
 - `analyzeAsJson()` / `analyzePathAsJson()` — the same results as pretty JSON.
+- `process()` / `processPath()` — a `ProcessedImageResult` containing the exact same JSON,
+  canonical cropped PNG bytes, dimensions, and source crop metadata.
 
 `AnalyzerFactory::createDefault()` returns a fully wired, GD-backed analyzer — the
 recommended way to obtain one. JSON encoding uses `JSON_PRESERVE_ZERO_FRACTION`, so
 `coverage_percent` stays float-shaped (`50.0`, not `50`).
+
+The `process*()` methods retain the crop already produced by the pipeline and pass its
+`Raster` to `PngEncoderInterface`. `GdPngEncoder` uses native GD copying for a `GdRaster`
+view and a row-major pixel fallback for custom rasters. Output is always `image/png`, even
+for JPEG input, so crop pixels and alpha are preserved. `EncodedImage::saveTo()` can write
+those bytes to an existing directory; it refuses existing destinations unless
+`overwrite: true` is explicit. Overwrites use a temporary file in the destination directory
+and an atomic rename, preserving the prior file if writing or finalization fails.
 
 ## Error handling
 
@@ -114,6 +124,8 @@ Failures are typed and all implement `ImageAnalyzerException`:
 - **Invalid input** (undecodable bytes, unreadable metadata) → `InvalidImageException`.
 - **Valid but unsupported** input (CMYK JPEG, non-PNG/JPEG, over `maxPixels`) →
   `UnsupportedImageException`.
+- **PNG encoding failure** → `ImageEncodingException`.
+- **Explicit file-save failure** → `ImageSaveException`.
 
 GD's native warnings are suppressed during decoding and translated into these exceptions, so
 callers get clean, catchable errors instead of PHP warnings.
@@ -129,6 +141,8 @@ facade to the stages that own them.
 - **Memory** is dominated by GD's decoded bitmap and the bounded cropper/histogram structures;
   the default path does not retain one PHP object per source pixel or copy pixels when cropping.
   The `maxPixels` guard caps accepted dimensions; downscale inputs above that ceiling.
+  `process*()` additionally holds PNG bytes and may allocate a cropped GD copy; callers that
+  only need color data should continue using `analyze*()`.
 - **Attack surface** is deliberately small: GD is bundled and has a far smaller CVE history
   than ImageMagick, one reason it is the default (see [ADR-002](../ADR-002-gd-vs-imagick.md)).
 - **String inputs are never treated as paths**, which avoids a class of accidental
@@ -147,7 +161,8 @@ composer test    # unit + integration tests
 CI runs PHP 8.2, 8.3, 8.4, and 8.5 with GD, plus a separate Imagick-adapter job on 8.4. The
 tests owned by this layer cover the contracts and DTOs, source resolution for every input
 kind, GD decoding and error paths, palette/alpha normalization, raster behavior and
-immutability, and `ColorConverter` accuracy against reference values.
+immutability, PNG encoding and saving, processed-result compatibility, and `ColorConverter`
+accuracy against reference values.
 
 ## Review checklist
 
@@ -163,4 +178,5 @@ immutability, and `ColorConverter` accuracy against reference values.
 
 [Architecture](../architecture.md) · [Frozen contracts](../contracts.md) ·
 [ADR-001 Color space](../ADR-001-color-space.md) · [ADR-002 GD vs Imagick](../ADR-002-gd-vs-imagick.md) ·
+[ADR-004 Cropped image output](../ADR-004-cropped-image-output.md) ·
 [Glossary](../glossary.md) · [README](../../README.md)

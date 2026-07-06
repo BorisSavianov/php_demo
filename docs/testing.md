@@ -18,8 +18,8 @@ The suite is layered so that each layer catches a different class of regression.
 
 | Layer | Location | What it guards |
 |---|---|---|
-| **Unit** | `tests/Unit/` | Each component in isolation: loader format/alpha/error paths, `ColorConverter` accuracy against reference values, cropper bounding boxes and edge cases, clusterer determinism and `k` selection, coverage rounding. |
-| **Integration** | `tests/Integration/` | The whole pipeline through `ImageColorAnalyzer::analyze()` on synthetic and real images, asserting the documented JSON shape and that percentages sum to `100.0`. |
+| **Unit** | `tests/Unit/` | Each component in isolation: loader format/alpha/error paths, `ColorConverter` accuracy, cropper edge cases, clustering, coverage rounding, PNG encoding, save semantics, and encoder failure isolation. |
+| **Integration** | `tests/Integration/` | The whole pipeline through `analyze*()` and `process*()`, asserting legacy JSON parity, crop metadata, encoded dimensions, and handle/path behavior. |
 | **Real-image** | `tests/Integration/WhiteBackgroundCropperRealImageTest.php` + fixtures | Behavior on genuinely decoded pixels (true alpha, real JPEG anti-aliasing), not just in-memory rasters. |
 | **Performance regression** | `tests/Unit/ColorClusterer/ClusteringPerformanceTest.php` | Resolution independence — that clustering cost tracks color diversity, not pixel count. |
 
@@ -62,6 +62,7 @@ php -m | findstr /i gd     # Windows
 ```bash
 php examples/analyze_from_path.php tests/Fixtures/real/sample.png
 php examples/analyze_from_handle.php tests/Fixtures/real/sample.jpg
+php examples/process_and_save.php tests/Fixtures/real/logo_white_border.png cropped.png
 ```
 
 ### 4. Try the edge-case fixtures (loader / cropper paths)
@@ -94,6 +95,10 @@ php examples/analyze_from_handle.php /path/to/your/image.png
 
 Confirm the JSON lists plausible colors, that the `coverage_percent` values sum to `100`, and
 that **no PHP warnings or errors** are printed to stderr.
+
+For `process_and_save.php`, also open the saved PNG and confirm its dimensions match the
+reported content crop. Re-running against the same destination must fail safely; add
+`--overwrite` only when replacement is intended.
 
 ### 8. Test malformed / non-image input (error handling)
 
