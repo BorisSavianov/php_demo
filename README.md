@@ -17,8 +17,8 @@ example, a print/pre-press pipeline).
 ## Requirements
 
 - **PHP ≥ 8.2** with **`ext-gd`** (developed against 8.4; CI on 8.2 / 8.3 / 8.4 / 8.5).
-- Optional **`ext-imagick`** — reserved for CMYK/ICC-aware normalization behind the same
-  loader interface.
+- Optional **`ext-imagick`** — enables the opt-in `ImagickImageLoader` for CMYK/ICC-aware
+  normalization behind the same loader interface.
 
 ## Install
 
@@ -76,10 +76,12 @@ source ─▶ ImageLoader ─▶ Raster ─▶ WhiteBackgroundCropper ─▶ Ras
    ColorCoverage[] ◀─ CoverageCalculator ◀─ ClusterResult ◀─ KMeansClusterer
 ```
 
-1. **Loader (GD)** decodes PNG/JPEG from a resource, stream, or path (format is sniffed from
-   magic bytes, not the extension). Palette and grayscale images are normalized to
-   truecolor, and GD's 7-bit alpha is expanded to 0–255. CMYK JPEGs — which GD cannot read
-   faithfully — are rejected with a clear `UnsupportedImageException`.
+1. **Loader (GD by default, Imagick opt-in)** decodes PNG/JPEG from a resource, stream, or
+   path (format is sniffed from magic bytes, not the extension). Palette and grayscale
+   images are normalized to truecolor, and GD's 7-bit alpha is expanded to 0–255. CMYK
+   JPEGs — which GD cannot read faithfully — are rejected with a clear
+   `UnsupportedImageException`; callers that need CMYK/ICC normalization can explicitly
+   wire `ImagickImageLoader`.
 2. **White-background cropper** scans inward from each of the four edges and stops at the
    first row/column carrying real content, returning the smallest rectangle around it.
    "Near-white" is judged in CIELAB (`L* ≥ lightnessMin` and chroma `≤ chromaMax`), so
@@ -147,8 +149,9 @@ border, the complete input raster is encoded and `wasCropped` is `false`.
   ordering — no global RNG state is touched.
 - **Resolution independent:** clustering runs on the binned histogram, so a multi-megapixel
   scan costs about the same as a thumbnail (covered by a performance regression test).
-- **Formats:** 8-bit PNG and JPEG. CMYK JPEG throws `UnsupportedImageException` (use
-  Imagick); 16-bit / ICC-aware handling is out of scope for the GD driver.
+- **Formats:** 8-bit PNG and JPEG on the default GD driver. CMYK JPEG throws
+  `UnsupportedImageException` on GD; use the opt-in `ImagickImageLoader` when CMYK/ICC
+  normalization is required.
 - **Lossy input:** JPEG compression can introduce faint edge colors; binning and the
   merge/low-coverage passes fold most of them away, but a large, sharp color boundary may
   leave a small (~1%) artifact color.

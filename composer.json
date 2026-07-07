@@ -1,5 +1,5 @@
 {
-    "name": "acme/image-color-analyzer",
+    "name": "teodor-todorov1/image-color-analyzer",
     "description": "Analyze PNG/JPEG images: crop the near-white background and report principal print colors with coverage percentages.",
     "type": "library",
     "license": "MIT",
@@ -14,7 +14,7 @@
         "friendsofphp/php-cs-fixer": "^3.59"
     },
     "suggest": {
-        "ext-imagick": "Enables the Imagick loader for CMYK/ICC-aware or very large images."
+        "ext-imagick": "Enables the opt-in ImagickImageLoader for CMYK/ICC-aware or very large images."
     },
     "autoload": {
         "psr-4": { "ImageColorAnalyzer\\": "src/" }
