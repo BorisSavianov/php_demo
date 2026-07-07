@@ -70,6 +70,15 @@ to keep accurate when modifying it:
 - **No explicit `imagedestroy()` is needed.** Since PHP 8.0, GD images are freed by the
   garbage collector; `imagedestroy()` is a deprecated no-op in 8.5. Do not reintroduce it.
 
+### Optional Imagick loading (`ImagickImageLoader`)
+
+`ImagickImageLoader` is available when `ext-imagick` is installed. It implements the same
+`ImageLoaderInterface`, reads the same `ImageSource` inputs, asks Imagick to normalize the
+source to `png32`, and then reuses the GD raster path so downstream crop, cluster, coverage,
+and PNG encoding behavior stays unchanged. The default factory remains GD-backed; callers
+who need CMYK/ICC-aware normalization should explicitly construct `ImageColorAnalyzer` with
+`ImagickImageLoader`.
+
 ### The `Raster` and its storage
 
 `Raster` is an **interface** (`width()`, `height()`, `hasAlpha()`, `pixelAt()`, `pixels()`,
